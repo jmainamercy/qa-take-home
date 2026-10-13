@@ -35,4 +35,9 @@ Useful options: `pytest --headed` (watch the browser), `pytest --browser firefox
 
 ## Status / known gaps
 
-- GitHub Actions workflow: `.github/workflows/tests.yml` at the repo root. Link to a passing run:
+- GitHub Actions workflow: `.github/workflows/tests.yml` at the repo root. Link to a passing run: https://github.com/jmainamercy/qa-take-home/actions/runs/38356516063
+- Status : Success
+- WorkFlow Name: UI tests
+- Job Name: ui-tests (completed in 33 seconds)
+- Total Duration: 38 seconds
+- Trigger: Pushed to the main branch by user @jmainamercy
