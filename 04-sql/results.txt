@@ -1,29 +1,134 @@
-== Q1 ==
-claim_id | member_name | provider_name | amount | status | submitted_on
-8 | Achieng Otieno | Baraka Dental | 22000 | in_review | 2026-09-20
-7 | Brian Mwangi | Mto Pharmacy | 2500 | approved | 2026-09-12
-6 | Hassan Ali | Uhai Clinic | 3000 | submitted | 2026-09-01
-5 | Hassan Ali | Uhai Clinic | 3000 | submitted | 2026-09-01
-3 | Brian Mwangi | Uhai Clinic | 15000 | rejected | 2026-08-10
-2 | Achieng Otieno | Mto Pharmacy | 1200 | paid | 2026-08-05
-1 | Achieng Otieno | Uhai Clinic | 4500 | approved | 2026-08-02
-4 | Wanjiru Kamau | Baraka Dental | 8000 | approved | 2026-07-15
+**Schema (MySQL v9)**
 
-== Q2 ==
-employer | total_approved
-Kilima Tech | 8000
-Sunrise Logistics | 7000
+    CREATE TABLE employers (id INTEGER PRIMARY KEY, name TEXT);
+    CREATE TABLE members (id INTEGER PRIMARY KEY, name TEXT,
+     employer_id INTEGER, policy_end DATE);
+    CREATE TABLE providers (id INTEGER PRIMARY KEY, name TEXT, type TEXT);
+    CREATE TABLE claims (id INTEGER PRIMARY KEY, member_id INTEGER,
+     provider_id INTEGER, amount INTEGER, status TEXT, submitted_on DATE);
+    INSERT INTO employers VALUES (1, 'Sunrise Logistics'), (2, 'Kilima Tech');
+    INSERT INTO members VALUES
+     (1, 'Achieng Otieno', 1, '2026-12-31'),
+     (2, 'Brian Mwangi', 1, '2026-12-31'),
+     (3, 'Wanjiru Kamau', 2, '2026-06-30'),
+     (4, 'Hassan Ali', 2, '2027-03-31'),
+     (5, 'Njeri Wambui', 1, '2026-12-31');
+    INSERT INTO providers VALUES
+     (1, 'Uhai Clinic', 'Outpatient'),
+     (2, 'Mto Pharmacy', 'Pharmacy'),
+     (3, 'Baraka Dental', 'Dental');
+    INSERT INTO claims VALUES
+     (1, 1, 1, 4500, 'approved', '2026-08-02'),
+     (2, 1, 2, 1200, 'paid', '2026-08-05'),
+     (3, 2, 1, 15000, 'rejected', '2026-08-10'),
+     (4, 3, 3, 8000, 'approved', '2026-07-15'),
+     (5, 4, 1, 3000, 'submitted', '2026-09-01'),
+     (6, 4, 1, 3000, 'submitted', '2026-09-01'),
+     (7, 2, 2, 2500, 'approved', '2026-09-12'),
+     (8, 1, 3, 22000, 'in_review', '2026-09-20');
+    
 
-== Q3 ==
-id | name
-5 | Njeri Wambui
+---
 
-== Q4 ==
-claim_id | member_name | policy_end | submitted_on | amount | status
-4 | Wanjiru Kamau | 2026-06-30 | 2026-07-15 | 8000 | approved
+**Query #1**
 
-== Q5 ==
-claim_id | member_id | provider_id | amount | submitted_on | status
-5 | 4 | 1 | 3000 | 2026-09-01 | submitted
-6 | 4 | 1 | 3000 | 2026-09-01 | submitted
+    -- Setup: run schema.sql first.
+    -- Plain ANSI SQL: works in SQLite and PostgreSQL.
+    
+    -- Q1
+    -- Every claim with member name, provider name, amount and status, newest first.
+    -- Tie-break on id DESC so claims on the same date have a stable order.
+    SELECT c.id        AS claim_id,
+           m.name      AS member_name,
+           p.name      AS provider_name,
+           c.amount,
+           c.status,
+           c.submitted_on
+    FROM claims c
+    JOIN members   m ON m.id = c.member_id
+    JOIN providers p ON p.id = c.provider_id
+    ORDER BY c.submitted_on DESC, c.id DESC;
 
+| claim_id | member_name    | provider_name | amount | status    | submitted_on |
+| -------- | -------------- | ------------- | ------ | --------- | ------------ |
+| 8        | Achieng Otieno | Baraka Dental | 22000  | in_review | 2026-09-20   |
+| 7        | Brian Mwangi   | Mto Pharmacy  | 2500   | approved  | 2026-09-12   |
+| 6        | Hassan Ali     | Uhai Clinic   | 3000   | submitted | 2026-09-01   |
+| 5        | Hassan Ali     | Uhai Clinic   | 3000   | submitted | 2026-09-01   |
+| 3        | Brian Mwangi   | Uhai Clinic   | 15000  | rejected  | 2026-08-10   |
+| 2        | Achieng Otieno | Mto Pharmacy  | 1200   | paid      | 2026-08-05   |
+| 1        | Achieng Otieno | Uhai Clinic   | 4500   | approved  | 2026-08-02   |
+| 4        | Wanjiru Kamau  | Baraka Dental | 8000   | approved  | 2026-07-15   |
+
+---
+**Query #2**
+
+    -- Q2
+    -- Total amount of approved claims for each employer.
+    -- Only status = 'approved' is counted ('paid' is a different status).
+    -- LEFT JOINs + COALESCE keep an employer with no approved claims (total 0).
+    SELECT e.name AS employer,
+           COALESCE(SUM(c.amount), 0) AS total_approved
+    FROM employers e
+    LEFT JOIN members m ON m.employer_id = e.id
+    LEFT JOIN claims  c ON c.member_id = m.id AND c.status = 'approved'
+    GROUP BY e.id, e.name
+    ORDER BY e.name;
+
+| employer          | total_approved |
+| ----------------- | -------------- |
+| Kilima Tech       | 8000           |
+| Sunrise Logistics | 7000           |
+
+---
+**Query #3**
+
+    -- Q3
+    -- Members who have never submitted a claim.
+    SELECT m.id, m.name
+    FROM members m
+    WHERE NOT EXISTS (SELECT 1 FROM claims c WHERE c.member_id = m.id);
+
+| id  | name         |
+| --- | ------------ |
+| 5   | Njeri Wambui |
+
+---
+**Query #4**
+
+    -- Q4
+    -- Claims submitted after the member's policy had ended.
+    SELECT c.id AS claim_id, m.name AS member_name, m.policy_end,
+           c.submitted_on, c.amount, c.status
+    FROM claims c
+    JOIN members m ON m.id = c.member_id
+    WHERE c.submitted_on > m.policy_end;
+
+| claim_id | member_name   | policy_end | submitted_on | amount | status   |
+| -------- | ------------- | ---------- | ------------ | ------ | -------- |
+| 4        | Wanjiru Kamau | 2026-06-30 | 2026-07-15   | 8000   | approved |
+
+---
+**Query #5**
+
+    -- Q5
+    -- Possible duplicate claims: same member, provider, amount and date.
+    -- Lists every claim in each duplicate group.
+    SELECT c.id AS claim_id, c.member_id, c.provider_id, c.amount, c.submitted_on, c.status
+    FROM claims c
+    JOIN (SELECT member_id, provider_id, amount, submitted_on
+          FROM claims
+          GROUP BY member_id, provider_id, amount, submitted_on
+          HAVING COUNT(*) > 1) d
+      ON  d.member_id = c.member_id AND d.provider_id = c.provider_id
+      AND d.amount = c.amount       AND d.submitted_on = c.submitted_on
+    ORDER BY c.member_id, c.submitted_on, c.id;
+
+| claim_id | member_id | provider_id | amount | submitted_on | status    |
+| -------- | --------- | ----------- | ------ | ------------ | --------- |
+| 5        | 4         | 1           | 3000   | 2026-09-01   | submitted |
+| 6        | 4         | 1           | 3000   | 2026-09-01   | submitted |
+
+---
+
+[View on DB Fiddle](https://www.db-fiddle.com/)
